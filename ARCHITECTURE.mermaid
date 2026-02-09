@@ -1,0 +1,86 @@
+---
+title: Renskriv Core — Rust PII Detection Engine
+---
+
+graph TD
+    subgraph INPUT["📄 Input"]
+        DOC["Document Text"]
+    end
+
+    subgraph PIPELINE["⚙️ Pipeline (pipeline.rs)"]
+        direction TB
+
+        subgraph L1["Layer 1 — Pattern Matching"]
+            FNR["fnr.rs\nFødselsnummer\nMOD-11 ✓"]
+            DNR["fnr.rs\nD-nummer\nMOD-11 ✓"]
+            PHONE["phone.rs\nTelefon\n+47 / 8-siffer"]
+            EMAIL["email.rs\nE-post\nRFC 5322"]
+            POSTAL["postal.rs\nPostnummer\n0001–9999"]
+            ORGNR["orgnr.rs\nOrg.nummer\nMOD-11 ✓"]
+            BANK["bank.rs\nBankkonto\nMOD-11 ✓"]
+        end
+
+        subgraph L2["Layer 2 — NER (trait NERDetector)"]
+            NER_TRAIT{"«trait»\nNERDetector"}
+            STUB["StubNER\n(tom)"]
+            CANDLE["Candle/Tract\n(Wasm)"]
+            SPACY["SpaCy via PyO3\n(Native)"]
+            NER_TRAIT --> STUB
+            NER_TRAIT -.-> CANDLE
+            NER_TRAIT -.-> SPACY
+        end
+
+        subgraph L3["Layer 3 — Gazetteer"]
+            GAZ["gazetteer/\nKartverket data\nAdresser + stedsnavn"]
+        end
+
+        subgraph L4["Layer 4 — Context Rules"]
+            CTX["context/\n«klient», «saksøker»\nKonfidensboost"]
+        end
+    end
+
+    subgraph MERGE["🔀 Merger (merger.rs)"]
+        SORT["Sorter etter posisjon"]
+        DEDUP["Dedupliser overlapp"]
+        PLACEHOLDERS["Tildel plassholdere\n[PERSON_1] [FNUMMER]"]
+        SORT --> DEDUP --> PLACEHOLDERS
+    end
+
+    subgraph MODELS["📦 Models (models.rs)"]
+        SPAN["Span\npii_type · value · start · end\nconfidence · source"]
+        PIITYPE["PIIType\nFodselsnummer · Dnummer\nPhone · Email · ..."]
+        RESULT["RedactionResult\noriginal · redacted\nspans · metadata"]
+    end
+
+    subgraph OUTPUT["📤 Output"]
+        SPANS_OUT["Vec&lt;Span&gt;"]
+        REDACTED["Redigert tekst"]
+        LOG["Revisjonslogg"]
+    end
+
+    DOC --> L1
+    DOC --> L2
+    DOC --> L3
+    DOC --> L4
+
+    L1 --> MERGE
+    L2 --> MERGE
+    L3 --> MERGE
+    L4 --> MERGE
+
+    MERGE --> OUTPUT
+
+    style INPUT fill:#1a1a2e,stroke:#4a9eff,color:#e0e0e0
+    style PIPELINE fill:#0d1117,stroke:#30363d,color:#e0e0e0
+    style L1 fill:#1a2332,stroke:#4a9eff,color:#e0e0e0
+    style L2 fill:#1a2332,stroke:#f0883e,color:#e0e0e0
+    style L3 fill:#1a2332,stroke:#56d364,color:#e0e0e0
+    style L4 fill:#1a2332,stroke:#bc8cff,color:#e0e0e0
+    style MERGE fill:#1a1a2e,stroke:#f0883e,color:#e0e0e0
+    style MODELS fill:#0d1117,stroke:#30363d,color:#e0e0e0
+    style OUTPUT fill:#1a1a2e,stroke:#56d364,color:#e0e0e0
+
+    style NER_TRAIT fill:#2d1f00,stroke:#f0883e,color:#f0883e
+    style STUB fill:#1a2332,stroke:#484f58,color:#8b949e,stroke-dasharray: 5 5
+    style CANDLE fill:#1a2332,stroke:#484f58,color:#8b949e,stroke-dasharray: 5 5
+    style SPACY fill:#1a2332,stroke:#484f58,color:#8b949e,stroke-dasharray: 5 5
