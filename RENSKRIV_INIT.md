@@ -196,8 +196,7 @@ The single most important detector. Gets you to "something works."
 - MOD-11 checksum validation function
 - Regex: find all 11-digit sequences in text
 - Validate each match with checksum
-- Date validation (first 6 digits = valid DDMMYY)
-- D-nummer detection (first digit 4–7, subtract 4 for date)
+  - D-nummer detection (first digit 4–7, subtract 4 for date)
 - **Tests:** valid fnr, invalid checksum, D-nummer, 11-digit non-fnr strings, fnr embedded in text
 
 ### Step 3: Phone Number Detection (`src/patterns/phone.rs`)

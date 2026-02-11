@@ -5,35 +5,44 @@ A PIIType value is either a Fodselsnummer or
 a Phone or a Person — never two at once, never something unlisted.
  */
 
- enum DetectionMethod {
-     Regex,
-     SpacyNER,
-     Gazetteer,
-     ContextRule,
-     Manual,
- }
+#[derive(Debug)]
+pub enum PIIType {
+    Fodselsnummer,
+    Dnummer,
+    Phone,
+    OrgNumber,
+    BankAccount,
+    Email,
+    PostalCode,
+}
 
- struct Span {
-     pii_type: PIIType,
-     source: DetectionSource,
-     value: String,
-     start: usize,
-     end: usize,
-     confidence: f64,
-     status: SpanStatus,       // review state
-     placeholder: String,      // e.g. "[PERSON_1]"
- }
+#[derive(Debug)]
+pub enum DetectionSource {
+    Pattern,
+    SpacyNER,
+    Gazetteer,
+    ContextRule,
+    Manual,
+}
+
+pub struct Span {
+    pub pii_type: PIIType,
+    pub source: DetectionSource,
+    pub value: String,
+    pub start: usize,
+    pub end: usize,
+    pub confidence: f64,
+}
+
+/*  pub enum SpanStatus {
+    Pending,   // awaiting review
+    Approved,  // user confirmed — redact this
+    Rejected,  // user said no — keep original text
+}
 
 
- enum SpanStatus {
-     Pending,   // awaiting review
-     Approved,  // user confirmed — redact this
-     Rejected,  // user said no — keep original text
- }
-
-
- struct RedactionResult {
-     original: String,
-     spans: Vec<Span>,      // each span knows its status
-     metadata: Metadata,
- }
+pub struct RedactionResult {
+    original: String,
+    spans: Vec<Span>,      // each span knows its status
+    metadata: Metadata,
+} */
