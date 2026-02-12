@@ -90,7 +90,6 @@ These details matter for correct implementation:
 
 - The original document is never modified. Every export creates a new file.
 - The user always has full control over what gets redacted before export.
-- All UI must be in Norwegian (Bokmål). Labels, buttons, messages, tooltips, errors — non-negotiable for the target market.
 - Security is built in from the start: no network calls after installation, fully offline operation, no data transmitted externally.
 
 ## Competitive Context
@@ -103,4 +102,3 @@ Renskriv's differentiators vs. established players (Redactable, CaseGuard, Impri
 - Concept-first, then implementation. Architecture patterns before code.
 - Trait-based design is central — explain in terms of interfaces and contracts.
 - Currently learning Rust fundamentals (enums, structs, traits). Meet him where he is.
-- Norwegian language in code comments and UI is expected.

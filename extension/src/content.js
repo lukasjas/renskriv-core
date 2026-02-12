@@ -1,4 +1,5 @@
 // content.js — Injiserer Renskriv-panelet i sida via Shadow DOM
+// + fangar innsending til AI-verktøy og skannar for PII
 
 const PII_LABELS = {
   Fodselsnummer: "Fnr",
@@ -14,6 +15,241 @@ let panelOpen = false;
 let shadowRoot = null;
 let currentSpans = [];
 let currentText = "";
+
+// ---- AI-verktøy interception ----
+
+// Kjende AI-sider. Brukt som hint — ikkje einaste mekanisme.
+// Selektorar kan brekke når React-komponentar oppdaterast,
+// difor bruker vi òg generisk contenteditable/textarea-deteksjon.
+const AI_HOSTS = [
+  "chatgpt.com",
+  "chat.openai.com",
+  "claude.ai",
+  "gemini.google.com",
+  "copilot.microsoft.com",
+];
+
+// Er vi på ei AI-side?
+function isAISite() {
+  return AI_HOSTS.some((h) => location.hostname.endsWith(h));
+}
+
+// Hent tekst frå eit input-element (textarea eller contenteditable).
+function getInputText(el) {
+  if (!el) return "";
+  if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") {
+    return el.value || "";
+  }
+  // contenteditable div (ChatGPT, Claude, Gemini brukar dette)
+  return el.innerText || "";
+}
+
+// Sett tekst tilbake i eit input-element.
+// React/frameworks reagerer ikkje på direkte .value-endringar,
+// så vi brukar native setter + input-event for å trigge oppdatering.
+function setInputText(el, text) {
+  if (!el) return;
+  if (el.tagName === "TEXTAREA") {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    ).set;
+    setter.call(el, text);
+  } else if (el.tagName === "INPUT") {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    ).set;
+    setter.call(el, text);
+  } else {
+    // contenteditable
+    el.innerText = text;
+  }
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+// Lim inn tekst i eit element som om brukaren skreiv det.
+// Brukar execCommand/InputEvent som React og ProseMirror forstår.
+function insertTextAtCursor(el, text) {
+  el.focus();
+  // execCommand('insertText') fungerer i contenteditable og textarea,
+  // og triggar React/ProseMirror sine interne oppdateringar.
+  if (document.execCommand("insertText", false, text)) {
+    return;
+  }
+  // Fallback for eldre nettlesarar eller element der execCommand ikkje verkar
+  setInputText(el, getInputText(el) + text);
+}
+
+// Finn det aktive input-elementet på sida (textarea eller contenteditable).
+function findActiveInput() {
+  const active = document.activeElement;
+  if (!active) return null;
+
+  // Direkte textarea/input
+  if (active.tagName === "TEXTAREA" || active.tagName === "INPUT") {
+    return active;
+  }
+
+  // contenteditable (inkl. nested — gå oppover til næraste contenteditable)
+  let el = active;
+  while (el && el !== document.body) {
+    if (el.isContentEditable) return el;
+    el = el.parentElement;
+  }
+
+  return null;
+}
+
+// Tilstand for intercepta innsending
+let interceptedInput = null; // referanse til AI-input-elementet
+let interceptMode = false; // true = panel viser intercepta tekst
+let skipNextEnter = false; // slepp gjennom Enter etter redaksjon
+function setupSubmitInterception() {
+  if (!isAISite()) return;
+
+  // 1) Fang paste — blokker innliming, skann, opne panel om PII finst.
+  //    Teksten kjem aldri inn i AI-inputfeltet før den er skanna.
+  //    Om ingen PII: lim inn manuelt (sidan vi blokkerte default).
+  document.addEventListener(
+    "paste",
+    (e) => {
+      // Ikkje fang paste i Renskriv-panelet
+      if (shadowRoot && shadowRoot.host.contains(e.target)) return;
+
+      const input = findActiveInput();
+      if (!input) return;
+
+      // Hent tekst frå clipboard FØR vi blokkerer
+      const pastedText = e.clipboardData?.getData("text/plain") || "";
+      if (!pastedText.trim()) return;
+
+      // Blokker innliminga — teksten kjem ikkje inn i inputfeltet
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Skann teksten
+      browser.runtime
+        .sendMessage({ type: "SCAN_TEXT", text: pastedText })
+        .then((response) => {
+          if (response.spans && response.spans.length > 0) {
+            // PII funne — opne panelet. Inputfeltet forblir tomt.
+            interceptedInput = input;
+            interceptMode = true;
+            openPanelWithText(pastedText, response.spans);
+          } else {
+            // Ingen PII — lim inn teksten manuelt sidan vi blokkerte default
+            insertTextAtCursor(input, pastedText);
+          }
+        })
+        .catch(() => {
+          // Feil — lim inn likevel så brukaren ikkje mistar teksten
+          insertTextAtCursor(input, pastedText);
+        });
+    },
+    true,
+  );
+
+  // 2) Fang Enter — siste sjekk for manuelt skrive PII
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key !== "Enter" || e.shiftKey) return;
+
+      // Slepp gjennom Enter etter at vi sjølv har trigga det
+      if (skipNextEnter) {
+        skipNextEnter = false;
+        return;
+      }
+
+      // Ikkje fang Enter frå Renskriv-panelet
+      if (shadowRoot && shadowRoot.host.contains(e.target)) return;
+
+      // Om panelet allereie er ope i intercept-modus, blokker Enter
+      if (interceptMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      const input = findActiveInput();
+      if (!input) return;
+
+      const text = getInputText(input).trim();
+      if (!text) return;
+
+      // Blokker Enter medan vi skannar
+      e.preventDefault();
+      e.stopPropagation();
+
+      browser.runtime
+        .sendMessage({ type: "SCAN_TEXT", text: text })
+        .then((response) => {
+          if (response.spans && response.spans.length > 0) {
+            interceptedInput = input;
+            interceptMode = true;
+            openPanelWithText(text, response.spans);
+          } else {
+            // Reint — send gjennom
+            resubmitEnter(input);
+          }
+        })
+        .catch(() => {
+          // Feil — ikkje blokker brukaren
+          resubmitEnter(input);
+        });
+    },
+    true,
+  );
+}
+
+// Send Enter-tasten på nytt til inputfeltet
+function resubmitEnter(el) {
+  skipNextEnter = true;
+  el.focus();
+  el.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Enter",
+      code: "Enter",
+      keyCode: 13,
+      which: 13,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+}
+
+// Opne panelet, fyll inn tekst og vis skanneresultat
+function openPanelWithText(text, spans) {
+  if (!shadowRoot) createPanel();
+
+  // Opne panelet om det ikkje allereie er ope
+  if (!panelOpen) {
+    panelOpen = true;
+    $("panel").classList.add("open");
+    shadowRoot.host.style.pointerEvents = "auto";
+  }
+
+  // Fyll inn tekst og resultat
+  $("input-text").value = text;
+  currentText = text;
+  currentSpans = spans;
+
+  // Vis "Sladd og send" i staden for berre "Sladd" i intercept-modus
+  renderResults();
+  updateRedactButton();
+}
+
+// Oppdater redact-knappen basert på modus
+function updateRedactButton() {
+  const btn = $("redact-btn");
+  if (!btn) return;
+  if (interceptMode) {
+    btn.textContent = "Sladd og send";
+  } else {
+    btn.textContent = "Sladd";
+  }
+}
 
 // ---- Shadow DOM oppsett ----
 
@@ -91,6 +327,13 @@ function togglePanel() {
   panelOpen = !panelOpen;
   $("panel").classList.toggle("open", panelOpen);
   shadowRoot.host.style.pointerEvents = panelOpen ? "auto" : "none";
+
+  // Nullstill intercept-modus når panelet lukkast
+  if (!panelOpen) {
+    interceptedInput = null;
+    interceptMode = false;
+    if (shadowRoot) updateRedactButton();
+  }
 }
 
 // ---- Event listeners ----
@@ -407,8 +650,30 @@ async function handleRedact() {
     approvedSpans: approvedSpans,
   });
 
-  $("output").classList.remove("hidden");
-  $("redacted-text").textContent = response.redactedText;
+  if (interceptMode && interceptedInput) {
+    // Intercept-modus: erstatt teksten i AI-inputfeltet og send
+    const target = interceptedInput;
+    setInputText(target, response.redactedText);
+
+    // Lukk panelet
+    panelOpen = false;
+    $("panel").classList.remove("open");
+    shadowRoot.host.style.pointerEvents = "none";
+
+    // Nullstill intercept-tilstand FØR re-submit
+    interceptedInput = null;
+    interceptMode = false;
+    updateRedactButton();
+
+    // Kort forseinking så React rekk å oppdatere, deretter send
+    setTimeout(() => {
+      resubmitEnter(target);
+    }, 100);
+  } else {
+    // Vanleg modus: vis sladda tekst i panelet
+    $("output").classList.remove("hidden");
+    $("redacted-text").textContent = response.redactedText;
+  }
 }
 
 // ---- Lytt etter melding fraa background (toggle panel) ----
@@ -418,6 +683,10 @@ browser.runtime.onMessage.addListener((message) => {
     togglePanel();
   }
 });
+
+// ---- Start interception på AI-sider ----
+
+setupSubmitInterception();
 
 // ---- CSS (isolert i Shadow DOM) ----
 
