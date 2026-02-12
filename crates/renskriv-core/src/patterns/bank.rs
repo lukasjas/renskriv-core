@@ -5,9 +5,9 @@ use crate::model::{DetectionSource, PIIType, Span};
 use crate::patterns::fnr;
 
 lazy_static! {
-    // 11 digits plain, or formatted as 1234.56.78901
+    // 11 digits: plain, dot-separated (1234.56.78901), or space-separated (1234 06 12345)
     static ref BANK_RE: Regex = Regex::new(
-        r"\b\d{4}\.\d{2}\.\d{5}\b|\b\d{11}\b"
+        r"\b\d{4}\.\d{2}\.\d{5}\b|\b\d{4}\s\d{2}\s\d{5}\b|\b\d{11}\b"
     ).unwrap();
 }
 
@@ -126,6 +126,13 @@ mod tests {
         // Should be rejected here — detect_fnr owns it.
         let results = detect_bank("Nummer: 01010101944");
         assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_valid_with_spaces() {
+        let results = detect_bank("Konto: 4200 06 12345");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].value, "4200 06 12345");
     }
 
     #[test]

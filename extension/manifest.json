@@ -1,0 +1,38 @@
+{
+  "manifest_version": 2,
+  "name": "Renskriv",
+  "version": "0.1.0",
+  "description": "Norsk PII-deteksjon og sladding for sikker AI-bruk",
+
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png"
+  },
+
+  "permissions": ["activeTab", "<all_urls>"],
+
+  "content_security_policy": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
+
+  "background": {
+    "scripts": ["src/background.js"],
+    "persistent": true
+  },
+
+  "browser_action": {
+    "default_icon": "icons/icon-48.png",
+    "default_title": "Renskriv — opne/lukk panel"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "web_accessible_resources": [
+    "src/wasm/renskriv_wasm_bg.wasm",
+    "src/wasm/renskriv_wasm.js"
+  ]
+}

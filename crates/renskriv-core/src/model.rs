@@ -5,7 +5,9 @@ A PIIType value is either a Fodselsnummer or
 a Phone or a Person — never two at once, never something unlisted.
  */
 
-#[derive(Debug)]
+use serde::Serialize;
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum PIIType {
     Fodselsnummer,
     Dnummer,
@@ -16,7 +18,7 @@ pub enum PIIType {
     PostalCode,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum DetectionSource {
     Pattern,
     SpacyNER,
@@ -25,6 +27,7 @@ pub enum DetectionSource {
     Manual,
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub struct Span {
     pub pii_type: PIIType,
     pub source: DetectionSource,

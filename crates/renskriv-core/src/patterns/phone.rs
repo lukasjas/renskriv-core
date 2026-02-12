@@ -52,6 +52,25 @@ pub fn detect_phone(text: &str) -> Vec<Span> {
             continue;
         }
 
+        // Avvis match som er del av ein referansekode (t.d. HR-2019-0041, NTPAY-2025-0412).
+        // Ekte telefonnummer har ikkje bokstav eller bindestrek rett for seg.
+        let has_country_prefix = candidate.starts_with('+') || candidate.starts_with("0047");
+        if !has_country_prefix && mat.start() > 0 {
+            let prev = text.as_bytes()[mat.start() - 1];
+            if prev == b'-' || prev.is_ascii_alphabetic() {
+                continue;
+            }
+        }
+
+        // Avvis match som har bokstav eller bindestrek rett etter seg.
+        // T.d. "2024-1247-A" der "-A" fylgjer.
+        if !has_country_prefix && mat.end() < text.len() {
+            let next = text.as_bytes()[mat.end()];
+            if next == b'-' || next.is_ascii_alphabetic() {
+                continue;
+            }
+        }
+
         results.push(Span {
             pii_type: PIIType::Phone,
             source: DetectionSource::Pattern,
@@ -130,5 +149,36 @@ mod tests {
     fn test_multiple_phones() {
         let results = detect_phone("Ring 91234567 eller 22334455");
         assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_reject_archive_reference() {
+        let results = detect_phone("arkivref. HR-2019-0041");
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_reject_protocol_reference() {
+        let results = detect_phone("protokollnr. NTS-2025-08-13");
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_reject_payroll_reference() {
+        let results = detect_phone("lønnsnr. NTPAY-2025-0412");
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_reject_court_case_reference() {
+        let results = detect_phone("HR-2024-1247-A");
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_accept_phone_after_text() {
+        // Ekte telefonnummer etter vanleg tekst skal framleis matche
+        let results = detect_phone("dir.tlf. 90456723");
+        assert_eq!(results.len(), 1);
     }
 }

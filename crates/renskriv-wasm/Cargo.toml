@@ -1,0 +1,13 @@
+[package]
+name = "renskriv-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "WASM-bindingar for renskriv-core PII-deteksjon"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+renskriv-core = { path = "../renskriv-core" }
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
