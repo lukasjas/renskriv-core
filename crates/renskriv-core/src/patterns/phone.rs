@@ -52,8 +52,8 @@ pub fn detect_phone(text: &str) -> Vec<Span> {
             continue;
         }
 
-        // Avvis match som er del av ein referansekode (t.d. HR-2019-0041, NTPAY-2025-0412).
-        // Ekte telefonnummer har ikkje bokstav eller bindestrek rett for seg.
+        // Reject match that is part of a reference code (e.g. HR-2019-0041, NTPAY-2025-0412).
+        // Real phone numbers don't have a letter or hyphen immediately before them.
         let has_country_prefix = candidate.starts_with('+') || candidate.starts_with("0047");
         if !has_country_prefix && mat.start() > 0 {
             let prev = text.as_bytes()[mat.start() - 1];
@@ -62,8 +62,8 @@ pub fn detect_phone(text: &str) -> Vec<Span> {
             }
         }
 
-        // Avvis match som har bokstav eller bindestrek rett etter seg.
-        // T.d. "2024-1247-A" der "-A" fylgjer.
+        // Reject match that has a letter or hyphen immediately after it.
+        // E.g. "2024-1247-A" where "-A" follows.
         if !has_country_prefix && mat.end() < text.len() {
             let next = text.as_bytes()[mat.end()];
             if next == b'-' || next.is_ascii_alphabetic() {
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn test_accept_phone_after_text() {
-        // Ekte telefonnummer etter vanleg tekst skal framleis matche
+        // Real phone number after normal text should still match
         let results = detect_phone("dir.tlf. 90456723");
         assert_eq!(results.len(), 1);
     }

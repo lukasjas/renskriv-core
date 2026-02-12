@@ -5,20 +5,20 @@ fn main() {
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)
-        .expect("Kunne ikke lese input");
+        .expect("Failed to read input");
 
     let spans = scan_all(&input);
 
     if spans.is_empty() {
-        println!("Ingen PII funnet.");
+        println!("No PII found.");
         return;
     }
 
-    println!("Fant {} treff:\n", spans.len());
+    println!("Found {} matches:\n", spans.len());
     for span in &spans {
         println!("  Type:     {:?}", span.pii_type);
-        println!("  Verdi:    {}", span.value);
-        println!("  Posisjon: {}..{}", span.start, span.end);
+        println!("  Value:    {}", span.value);
+        println!("  Position: {}..{}", span.start, span.end);
         println!();
     }
 }

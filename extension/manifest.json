@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Renskriv",
   "version": "0.1.0",
-  "description": "Norsk PII-deteksjon og sladding for sikker AI-bruk",
+  "description": "Norwegian PII detection and redaction for safe AI usage",
 
   "icons": {
     "48": "icons/icon-48.png",
@@ -20,7 +20,7 @@
 
   "browser_action": {
     "default_icon": "icons/icon-48.png",
-    "default_title": "Renskriv — opne/lukk panel"
+    "default_title": "Renskriv — open/close panel"
   },
 
   "content_scripts": [

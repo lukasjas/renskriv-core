@@ -48,8 +48,8 @@ fn validate_checksum(d: &[u8; 11]) -> bool {
     k == d[10] as u32
 }
 
-// Overlap prevention: if the number also passes as a fødselsnummer/D-nummer,
-// it belongs to detect_fnr, not to us.
+// Overlap prevention: if the number also passes as a national identity number
+// or D-number, it belongs to detect_fnr, not to us.
 fn is_likely_fnr(d: &[u8; 11]) -> bool {
     fnr::validate_date(d) && fnr::validate_checksum(d)
 }
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_reject_fnr_overlap() {
-        // 01010101944 is a valid fødselsnummer AND passes bank MOD-11.
+        // 01010101944 is a valid national identity number AND passes bank MOD-11.
         // Should be rejected here — detect_fnr owns it.
         let results = detect_bank("Nummer: 01010101944");
         assert_eq!(results.len(), 0);

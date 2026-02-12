@@ -1,14 +1,14 @@
-// content.js — Injiserer Renskriv-panelet i sida via Shadow DOM
-// + fangar innsending til AI-verktøy og skannar for PII
+// content.js — Injects the Renskriv panel into the page via Shadow DOM
+// + intercepts submissions to AI tools and scans for PII
 
 const PII_LABELS = {
-  Fodselsnummer: "Fnr",
-  Dnummer: "D-nr",
-  Phone: "Telefon",
-  Email: "E-post",
-  PostalCode: "Postnr",
-  OrgNumber: "Orgnr",
-  BankAccount: "Bankkonto",
+  Fodselsnummer: "ID No.",
+  Dnummer: "D-No.",
+  Phone: "Phone",
+  Email: "Email",
+  PostalCode: "Postal",
+  OrgNumber: "Org No.",
+  BankAccount: "Bank Acct",
 };
 
 let panelOpen = false;
@@ -16,11 +16,11 @@ let shadowRoot = null;
 let currentSpans = [];
 let currentText = "";
 
-// ---- AI-verktøy interception ----
+// ---- AI tool interception ----
 
-// Kjende AI-sider. Brukt som hint — ikkje einaste mekanisme.
-// Selektorar kan brekke når React-komponentar oppdaterast,
-// difor bruker vi òg generisk contenteditable/textarea-deteksjon.
+// Known AI sites. Used as a hint — not the sole mechanism.
+// Selectors can break when React components update,
+// so we also use generic contenteditable/textarea detection.
 const AI_HOSTS = [
   "chatgpt.com",
   "chat.openai.com",
@@ -29,24 +29,24 @@ const AI_HOSTS = [
   "copilot.microsoft.com",
 ];
 
-// Er vi på ei AI-side?
+// Are we on an AI site?
 function isAISite() {
   return AI_HOSTS.some((h) => location.hostname.endsWith(h));
 }
 
-// Hent tekst frå eit input-element (textarea eller contenteditable).
+// Get text from an input element (textarea or contenteditable).
 function getInputText(el) {
   if (!el) return "";
   if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") {
     return el.value || "";
   }
-  // contenteditable div (ChatGPT, Claude, Gemini brukar dette)
+  // contenteditable div (ChatGPT, Claude, Gemini use this)
   return el.innerText || "";
 }
 
-// Sett tekst tilbake i eit input-element.
-// React/frameworks reagerer ikkje på direkte .value-endringar,
-// så vi brukar native setter + input-event for å trigge oppdatering.
+// Set text back in an input element.
+// React/frameworks don't react to direct .value changes,
+// so we use native setter + input event to trigger updates.
 function setInputText(el, text) {
   if (!el) return;
   if (el.tagName === "TEXTAREA") {
@@ -68,30 +68,30 @@ function setInputText(el, text) {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-// Lim inn tekst i eit element som om brukaren skreiv det.
-// Brukar execCommand/InputEvent som React og ProseMirror forstår.
+// Insert text into an element as if the user typed it.
+// Uses execCommand/InputEvent which React and ProseMirror understand.
 function insertTextAtCursor(el, text) {
   el.focus();
-  // execCommand('insertText') fungerer i contenteditable og textarea,
-  // og triggar React/ProseMirror sine interne oppdateringar.
+  // execCommand('insertText') works in contenteditable and textarea,
+  // and triggers React/ProseMirror internal updates.
   if (document.execCommand("insertText", false, text)) {
     return;
   }
-  // Fallback for eldre nettlesarar eller element der execCommand ikkje verkar
+  // Fallback for older browsers or elements where execCommand doesn't work
   setInputText(el, getInputText(el) + text);
 }
 
-// Finn det aktive input-elementet på sida (textarea eller contenteditable).
+// Find the active input element on the page (textarea or contenteditable).
 function findActiveInput() {
   const active = document.activeElement;
   if (!active) return null;
 
-  // Direkte textarea/input
+  // Direct textarea/input
   if (active.tagName === "TEXTAREA" || active.tagName === "INPUT") {
     return active;
   }
 
-  // contenteditable (inkl. nested — gå oppover til næraste contenteditable)
+  // contenteditable (incl. nested — walk up to nearest contenteditable)
   let el = active;
   while (el && el !== document.body) {
     if (el.isContentEditable) return el;
@@ -101,71 +101,71 @@ function findActiveInput() {
   return null;
 }
 
-// Tilstand for intercepta innsending
-let interceptedInput = null; // referanse til AI-input-elementet
-let interceptMode = false; // true = panel viser intercepta tekst
-let skipNextEnter = false; // slepp gjennom Enter etter redaksjon
+// State for intercepted submission
+let interceptedInput = null; // reference to the AI input element
+let interceptMode = false; // true = panel shows intercepted text
+let skipNextEnter = false; // let Enter through after redaction
 function setupSubmitInterception() {
   if (!isAISite()) return;
 
-  // 1) Fang paste — blokker innliming, skann, opne panel om PII finst.
-  //    Teksten kjem aldri inn i AI-inputfeltet før den er skanna.
-  //    Om ingen PII: lim inn manuelt (sidan vi blokkerte default).
+  // 1) Intercept paste — block pasting, scan, open panel if PII found.
+  //    The text never enters the AI input field before it's scanned.
+  //    If no PII: paste manually (since we blocked the default).
   document.addEventListener(
     "paste",
     (e) => {
-      // Ikkje fang paste i Renskriv-panelet
+      // Don't intercept paste in the Renskriv panel
       if (shadowRoot && shadowRoot.host.contains(e.target)) return;
 
       const input = findActiveInput();
       if (!input) return;
 
-      // Hent tekst frå clipboard FØR vi blokkerer
+      // Get text from clipboard BEFORE we block
       const pastedText = e.clipboardData?.getData("text/plain") || "";
       if (!pastedText.trim()) return;
 
-      // Blokker innliminga — teksten kjem ikkje inn i inputfeltet
+      // Block the paste — text doesn't enter the input field
       e.preventDefault();
       e.stopPropagation();
 
-      // Skann teksten
+      // Scan the text
       browser.runtime
         .sendMessage({ type: "SCAN_TEXT", text: pastedText })
         .then((response) => {
           if (response.spans && response.spans.length > 0) {
-            // PII funne — opne panelet. Inputfeltet forblir tomt.
+            // PII found — open the panel. Input field remains empty.
             interceptedInput = input;
             interceptMode = true;
             openPanelWithText(pastedText, response.spans);
           } else {
-            // Ingen PII — lim inn teksten manuelt sidan vi blokkerte default
+            // No PII — paste the text manually since we blocked default
             insertTextAtCursor(input, pastedText);
           }
         })
         .catch(() => {
-          // Feil — lim inn likevel så brukaren ikkje mistar teksten
+          // Error — paste anyway so the user doesn't lose the text
           insertTextAtCursor(input, pastedText);
         });
     },
     true,
   );
 
-  // 2) Fang Enter — siste sjekk for manuelt skrive PII
+  // 2) Intercept Enter — final check for manually typed PII
   document.addEventListener(
     "keydown",
     (e) => {
       if (e.key !== "Enter" || e.shiftKey) return;
 
-      // Slepp gjennom Enter etter at vi sjølv har trigga det
+      // Let Enter through after we triggered it ourselves
       if (skipNextEnter) {
         skipNextEnter = false;
         return;
       }
 
-      // Ikkje fang Enter frå Renskriv-panelet
+      // Don't intercept Enter from the Renskriv panel
       if (shadowRoot && shadowRoot.host.contains(e.target)) return;
 
-      // Om panelet allereie er ope i intercept-modus, blokker Enter
+      // If panel is already open in intercept mode, block Enter
       if (interceptMode) {
         e.preventDefault();
         e.stopPropagation();
@@ -178,7 +178,7 @@ function setupSubmitInterception() {
       const text = getInputText(input).trim();
       if (!text) return;
 
-      // Blokker Enter medan vi skannar
+      // Block Enter while we scan
       e.preventDefault();
       e.stopPropagation();
 
@@ -190,12 +190,12 @@ function setupSubmitInterception() {
             interceptMode = true;
             openPanelWithText(text, response.spans);
           } else {
-            // Reint — send gjennom
+            // Clean — send through
             resubmitEnter(input);
           }
         })
         .catch(() => {
-          // Feil — ikkje blokker brukaren
+          // Error — don't block the user
           resubmitEnter(input);
         });
     },
@@ -203,7 +203,7 @@ function setupSubmitInterception() {
   );
 }
 
-// Send Enter-tasten på nytt til inputfeltet
+// Re-send the Enter key to the input field
 function resubmitEnter(el) {
   skipNextEnter = true;
   el.focus();
@@ -219,44 +219,44 @@ function resubmitEnter(el) {
   );
 }
 
-// Opne panelet, fyll inn tekst og vis skanneresultat
+// Open the panel, fill in text and show scan results
 function openPanelWithText(text, spans) {
   if (!shadowRoot) createPanel();
 
-  // Opne panelet om det ikkje allereie er ope
+  // Open the panel if it isn't already open
   if (!panelOpen) {
     panelOpen = true;
     $("panel").classList.add("open");
     shadowRoot.host.style.pointerEvents = "auto";
   }
 
-  // Fyll inn tekst og resultat
+  // Fill in text and results
   $("input-text").value = text;
   currentText = text;
   currentSpans = spans;
 
-  // Vis "Sladd og send" i staden for berre "Sladd" i intercept-modus
+  // Show "Redact and send" instead of just "Redact" in intercept mode
   renderResults();
   updateRedactButton();
 }
 
-// Oppdater redact-knappen basert på modus
+// Update the redact button based on mode
 function updateRedactButton() {
   const btn = $("redact-btn");
   if (!btn) return;
   if (interceptMode) {
-    btn.textContent = "Sladd og send";
+    btn.textContent = "Redact and send";
   } else {
-    btn.textContent = "Sladd";
+    btn.textContent = "Redact";
   }
 }
 
-// ---- Shadow DOM oppsett ----
+// ---- Shadow DOM setup ----
 
 function createPanel() {
   const host = document.createElement("div");
   host.id = "renskriv-host";
-  // all:initial nullstiller alle arvede stilar fraa sida
+  // all:initial resets all inherited styles from the page
   host.style.cssText =
     "all: initial; position: fixed; z-index: 2147483647; pointer-events: none;";
   document.documentElement.appendChild(host);
@@ -269,33 +269,33 @@ function createPanel() {
     <header id="drag-handle">
         <h1>Renskriv</h1>
         <div class="header-right">
-            <span class="status" id="status">Laster...</span>
-            <button class="close-btn" id="close-btn" title="Lukk">&times;</button>
+            <span class="status" id="status">Loading...</span>
+            <button class="close-btn" id="close-btn" title="Close">&times;</button>
         </div>
     </header>
 
     <div class="panel-body">
         <div class="input-section">
-            <label for="input-text">Lim inn tekst for skanning:</label>
-            <textarea id="input-text" rows="6" placeholder="Lim inn tekst her..."></textarea>
-            <button id="scan-btn" class="scan-btn" disabled>Skann</button>
+            <label for="input-text">Paste text to scan:</label>
+            <textarea id="input-text" rows="6" placeholder="Paste text here..."></textarea>
+            <button id="scan-btn" class="scan-btn" disabled>Scan</button>
         </div>
 
         <div id="results" class="results hidden">
-            <h2>Funn</h2>
+            <h2>Matches</h2>
             <div id="highlighted-text" class="highlighted-text"></div>
             <div id="span-list" class="span-list"></div>
             <div class="actions">
-                <button id="select-all-btn">Velg alle</button>
-                <button id="clear-all-btn">Fjern alle</button>
+                <button id="select-all-btn">Select all</button>
+                <button id="clear-all-btn">Clear all</button>
             </div>
-            <button id="redact-btn" class="redact-btn">Sladd</button>
+            <button id="redact-btn" class="redact-btn">Redact</button>
         </div>
 
         <div id="output" class="output hidden">
-            <h2>Sladdet tekst</h2>
+            <h2>Redacted text</h2>
             <pre id="redacted-text"></pre>
-            <button id="copy-btn">Kopier</button>
+            <button id="copy-btn">Copy</button>
         </div>
     </div>
 
@@ -314,13 +314,13 @@ function createPanel() {
   checkStatus();
 }
 
-// ---- Hjelpar: finn element i shadow ----
+// ---- Helper: find element in shadow ----
 
 function $(id) {
   return shadowRoot.getElementById(id);
 }
 
-// ---- Vis / skjul panelet ----
+// ---- Show / hide the panel ----
 
 function togglePanel() {
   if (!shadowRoot) createPanel();
@@ -328,7 +328,7 @@ function togglePanel() {
   $("panel").classList.toggle("open", panelOpen);
   shadowRoot.host.style.pointerEvents = panelOpen ? "auto" : "none";
 
-  // Nullstill intercept-modus når panelet lukkast
+  // Reset intercept mode when panel closes
   if (!panelOpen) {
     interceptedInput = null;
     interceptMode = false;
@@ -339,8 +339,8 @@ function togglePanel() {
 // ---- Event listeners ----
 
 function setupEventListeners() {
-  // Stopp tastatur-hendingar fraa aa boble ut til sida.
-  // Utan dette fangar ChatGPT/Claude/etc. tastetrykkane vaare.
+  // Stop keyboard events from bubbling out to the page.
+  // Without this, ChatGPT/Claude/etc. capture our keystrokes.
   const panel = $("panel");
   for (const evt of ["keydown", "keyup", "keypress", "input"]) {
     panel.addEventListener(evt, (e) => e.stopPropagation());
@@ -373,14 +373,14 @@ function setupEventListeners() {
   $("copy-btn").addEventListener("click", async () => {
     const text = $("redacted-text").textContent;
     await navigator.clipboard.writeText(text);
-    $("copy-btn").textContent = "Kopiert!";
+    $("copy-btn").textContent = "Copied!";
     setTimeout(() => {
-      $("copy-btn").textContent = "Kopier";
+      $("copy-btn").textContent = "Copy";
     }, 1500);
   });
 }
 
-// ---- Dra panelet (flytt) ----
+// ---- Drag the panel (move) ----
 
 function setupDrag() {
   const panel = $("panel");
@@ -388,11 +388,11 @@ function setupDrag() {
   let offsetX = 0;
   let offsetY = 0;
 
-  // Heile panelet er draggbart, unntatt interaktive element
+  // The entire panel is draggable, except interactive elements
   const NO_DRAG = new Set(["TEXTAREA", "INPUT", "BUTTON", "MARK", "PRE", "A"]);
 
   panel.addEventListener("mousedown", (e) => {
-    // Ikkje dra fraa interaktive element eller resize-kantar
+    // Don't drag from interactive elements or resize edges
     if (NO_DRAG.has(e.target.tagName)) return;
     if (e.target.classList.contains("edge")) return;
     dragging = true;
@@ -408,7 +408,7 @@ function setupDrag() {
     let x = e.clientX - offsetX;
     let y = e.clientY - offsetY;
 
-    // Hald panelet innanfor viewport
+    // Keep the panel within the viewport
     const w = panel.offsetWidth;
     const h = panel.offsetHeight;
     x = Math.max(0, Math.min(x, window.innerWidth - w));
@@ -416,7 +416,7 @@ function setupDrag() {
 
     panel.style.left = x + "px";
     panel.style.top = y + "px";
-    // Fjern right/bottom-posisjonering naar brukar dreg
+    // Remove right/bottom positioning when user drags
     panel.style.right = "auto";
     panel.style.bottom = "auto";
   });
@@ -429,7 +429,7 @@ function setupDrag() {
   });
 }
 
-// ---- Resize fraa alle kantar og hjorne ----
+// ---- Resize from all edges and corners ----
 
 function setupResize() {
   const panel = $("panel");
@@ -439,7 +439,7 @@ function setupResize() {
   let dir = "";
   let startX, startY, startRect;
 
-  // Alle edge-element har data-dir attributt
+  // All edge elements have a data-dir attribute
   const edges = shadowRoot.querySelectorAll(".edge");
   edges.forEach((edge) => {
     edge.addEventListener("mousedown", (e) => {
@@ -464,7 +464,7 @@ function setupResize() {
     let w = startRect.width;
     let h = startRect.height;
 
-    // Kva kant/hjorne blir drege?
+    // Which edge/corner is being dragged?
     if (dir.includes("e")) w = Math.max(MIN_W, w + dx);
     if (dir.includes("s")) h = Math.max(MIN_H, h + dy);
     if (dir.includes("w")) {
@@ -493,7 +493,7 @@ function setupResize() {
   });
 }
 
-// ---- WASM-status ----
+// ---- WASM status ----
 
 async function checkStatus() {
   try {
@@ -503,23 +503,23 @@ async function checkStatus() {
       $("status").classList.add("ready");
       $("scan-btn").disabled = false;
     } else {
-      $("status").textContent = "Laster WASM...";
+      $("status").textContent = "Loading WASM...";
       setTimeout(checkStatus, 500);
     }
   } catch (err) {
-    $("status").textContent = "Feil";
+    $("status").textContent = "Error";
     $("status").classList.add("error");
   }
 }
 
-// ---- Skanning ----
+// ---- Scanning ----
 
 async function handleScan() {
   const text = $("input-text").value.trim();
   if (!text) return;
 
   $("scan-btn").disabled = true;
-  $("scan-btn").textContent = "Skanner...";
+  $("scan-btn").textContent = "Scanning...";
   currentText = text;
 
   try {
@@ -529,7 +529,7 @@ async function handleScan() {
     });
 
     if (response.error) {
-      alert("Feil: " + response.error);
+      alert("Error: " + response.error);
       return;
     }
 
@@ -537,7 +537,7 @@ async function handleScan() {
 
     if (currentSpans.length === 0) {
       $("results").classList.remove("hidden");
-      $("highlighted-text").textContent = "Ingen personopplysningar funne.";
+      $("highlighted-text").textContent = "No personal data found.";
       $("span-list").innerHTML = "";
       $("redact-btn").classList.add("hidden");
       $("select-all-btn").classList.add("hidden");
@@ -548,14 +548,14 @@ async function handleScan() {
 
     renderResults();
   } catch (err) {
-    alert("Feil ved skanning: " + err.message);
+    alert("Scan error: " + err.message);
   } finally {
     $("scan-btn").disabled = false;
-    $("scan-btn").textContent = "Skann";
+    $("scan-btn").textContent = "Scan";
   }
 }
 
-// ---- Resultat-rendering ----
+// ---- Result rendering ----
 
 function renderResults() {
   $("results").classList.remove("hidden");
@@ -631,7 +631,7 @@ function renderHighlightedText() {
   }
 }
 
-// ---- Sladding ----
+// ---- Redaction ----
 
 async function handleRedact() {
   const approvedSpans = currentSpans.filter((_, i) => {
@@ -640,7 +640,7 @@ async function handleRedact() {
   });
 
   if (approvedSpans.length === 0) {
-    alert("Ingen funn er valt for sladding.");
+    alert("No matches selected for redaction.");
     return;
   }
 
@@ -651,32 +651,32 @@ async function handleRedact() {
   });
 
   if (interceptMode && interceptedInput) {
-    // Intercept-modus: erstatt teksten i AI-inputfeltet og send
+    // Intercept mode: replace the text in the AI input field and send
     const target = interceptedInput;
     setInputText(target, response.redactedText);
 
-    // Lukk panelet
+    // Close the panel
     panelOpen = false;
     $("panel").classList.remove("open");
     shadowRoot.host.style.pointerEvents = "none";
 
-    // Nullstill intercept-tilstand FØR re-submit
+    // Reset intercept state BEFORE re-submit
     interceptedInput = null;
     interceptMode = false;
     updateRedactButton();
 
-    // Kort forseinking så React rekk å oppdatere, deretter send
+    // Short delay so React has time to update, then send
     setTimeout(() => {
       resubmitEnter(target);
     }, 100);
   } else {
-    // Vanleg modus: vis sladda tekst i panelet
+    // Normal mode: show redacted text in the panel
     $("output").classList.remove("hidden");
     $("redacted-text").textContent = response.redactedText;
   }
 }
 
-// ---- Lytt etter melding fraa background (toggle panel) ----
+// ---- Listen for messages from background (toggle panel) ----
 
 browser.runtime.onMessage.addListener((message) => {
   if (message.type === "TOGGLE_PANEL") {
@@ -684,11 +684,11 @@ browser.runtime.onMessage.addListener((message) => {
   }
 });
 
-// ---- Start interception på AI-sider ----
+// ---- Start interception on AI sites ----
 
 setupSubmitInterception();
 
-// ---- CSS (isolert i Shadow DOM) ----
+// ---- CSS (isolated in Shadow DOM) ----
 
 const PANEL_CSS = `
 * {
@@ -965,7 +965,7 @@ button:disabled {
     display: none;
 }
 
-/* Resize-kantar og hjorne (usynlege, berre markør endrar seg) */
+/* Resize edges and corners (invisible, only the cursor changes) */
 .edge {
     position: absolute;
 }

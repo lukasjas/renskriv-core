@@ -13,7 +13,7 @@ body {
     background: #fafafa;
 }
 
-/* Fullskjerm-modus i eiga fane */
+/* Fullscreen mode in a separate tab */
 body.fullpage {
     min-width: unset;
     max-width: 720px;
@@ -251,7 +251,7 @@ body.fullpage textarea {
     display: none;
 }
 
-/* Farger per PII-type for utheving */
+/* Colors per PII type for highlighting */
 .pii-Fodselsnummer {
     background: rgba(239, 68, 68, 0.2);
 }

@@ -1,37 +1,37 @@
-// background.js — Laster WASM og handterer skanneforesporsler
+// background.js — Loads WASM and handles scan requests
 
 let wasmModule = null;
 
-// Last WASM-modulen ved oppstart
+// Load the WASM module on startup
 async function initWasm() {
   try {
-    // Hent URL-er til WASM-filene i utvidelsen
+    // Get URLs for the WASM files in the extension
     const jsUrl = browser.runtime.getURL("src/wasm/renskriv_wasm.js");
     const wasmUrl = browser.runtime.getURL("src/wasm/renskriv_wasm_bg.wasm");
 
-    // Importer JS-glue-koden og initialiser WASM
+    // Import JS glue code and initialize WASM
     const mod = await import(jsUrl);
     await mod.default(wasmUrl);
     wasmModule = mod;
 
-    console.log("Renskriv WASM lastet, versjon:", wasmModule.version());
+    console.log("Renskriv WASM loaded, version:", wasmModule.version());
   } catch (err) {
-    console.error("Kunne ikke laste WASM:", err);
+    console.error("Failed to load WASM:", err);
   }
 }
 
 initWasm();
 
-// Klikk pa utvidingsikon => toggle panelet i aktiv fane
+// Click on extension icon => toggle the panel in the active tab
 browser.browserAction.onClicked.addListener(async (tab) => {
   browser.tabs.sendMessage(tab.id, { type: "TOGGLE_PANEL" });
 });
 
-// Lytt etter meldinger fra content script
+// Listen for messages from content script
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "SCAN_TEXT") {
     handleScan(message.text).then(sendResponse);
-    return true; // asynkront svar
+    return true; // async response
   }
 
   if (message.type === "REDACT_TEXT") {
@@ -52,28 +52,28 @@ async function handleScan(text) {
     await initWasm();
   }
   if (!wasmModule) {
-    return { error: "WASM ikke lastet" };
+    return { error: "WASM not loaded" };
   }
 
   try {
     const spans = wasmModule.scan_text(text);
     return { spans: spans || [] };
   } catch (err) {
-    console.error("Skannefeil:", err);
+    console.error("Scan error:", err);
     return { error: err.message };
   }
 }
 
-// Erstatt godkjente funn med plassholdere.
-// Jobber bakfra slik at posisjoner forblir gyldige.
-// Hopper over spans som overlappar med allereie utforte erstatningar.
+// Replace approved matches with placeholders.
+// Works backwards so that positions remain valid.
+// Skips spans that overlap with already-applied replacements.
 function applyRedactions(originalText, approvedSpans) {
   const sorted = [...approvedSpans].sort((a, b) => b.start - a.start);
   let result = originalText;
-  let appliedEnd = Infinity; // Nedre grense for neste gyldige erstatning
+  let appliedEnd = Infinity; // Lower bound for next valid replacement
 
   for (const span of sorted) {
-    // Hopp over om denne spanen overlappar med ein allereie erstatta span
+    // Skip if this span overlaps with an already-replaced span
     if (span.end > appliedEnd) {
       continue;
     }
