@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="nb">
+<html lang="en">
     <head>
         <meta charset="utf-8" />
         <link rel="stylesheet" href="popup.css" />
@@ -9,11 +9,11 @@
             <header>
                 <h1>Renskriv</h1>
                 <div class="header-right">
-                    <span class="status" id="status">Laster...</span>
+                    <span class="status" id="status">Loading...</span>
                     <button
                         id="expand-btn"
                         class="expand-btn"
-                        title="Opne i eiga fane"
+                        title="Open in a new tab"
                     >
                         &#x26F6;
                     </button>
@@ -21,30 +21,30 @@
             </header>
 
             <div class="input-section">
-                <label for="input-text">Lim inn tekst for skanning:</label>
+                <label for="input-text">Paste text to scan:</label>
                 <textarea
                     id="input-text"
                     rows="8"
-                    placeholder="Lim inn tekst her..."
+                    placeholder="Paste text here..."
                 ></textarea>
-                <button id="scan-btn" disabled>Skann</button>
+                <button id="scan-btn" disabled>Scan</button>
             </div>
 
             <div id="results" class="results hidden">
-                <h2>Funn</h2>
+                <h2>Matches</h2>
                 <div id="highlighted-text" class="highlighted-text"></div>
                 <div id="span-list" class="span-list"></div>
                 <div class="actions">
-                    <button id="select-all-btn">Velg alle</button>
-                    <button id="clear-all-btn">Fjern alle</button>
+                    <button id="select-all-btn">Select all</button>
+                    <button id="clear-all-btn">Clear all</button>
                 </div>
-                <button id="redact-btn" class="redact-btn">Sladd</button>
+                <button id="redact-btn" class="redact-btn">Redact</button>
             </div>
 
             <div id="output" class="output hidden">
-                <h2>Sladdet tekst</h2>
+                <h2>Redacted text</h2>
                 <pre id="redacted-text"></pre>
-                <button id="copy-btn">Kopier</button>
+                <button id="copy-btn">Copy</button>
             </div>
         </div>
         <script src="popup.js"></script>

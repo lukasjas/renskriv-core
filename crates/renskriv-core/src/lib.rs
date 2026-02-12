@@ -4,9 +4,9 @@ pub mod patterns;
 use model::Span;
 use patterns::{bank, email, fnr, orgnr, phone, postal};
 
-/// Kjor alle monsterdetektor-er pa teksten.
-/// Returnerer funn sortert etter posisjon (start-offset).
-/// Overlappande spans blir dedupliserte: lengre/meir presis span vinn.
+/// Run all pattern detectors on the text.
+/// Returns matches sorted by position (start offset).
+/// Overlapping spans are deduplicated: longer/more precise span wins.
 pub fn scan_all(text: &str) -> Vec<Span> {
     let mut spans = Vec::new();
     spans.extend(fnr::detect_fnr(text));
@@ -16,7 +16,7 @@ pub fn scan_all(text: &str) -> Vec<Span> {
     spans.extend(orgnr::detect_orgnr(text));
     spans.extend(bank::detect_bank(text));
 
-    // Sorter: lengste span fyrst, deretter hogaste konfidens
+    // Sort: longest span first, then highest confidence
     spans.sort_by(|a, b| {
         let len_a = a.end - a.start;
         let len_b = b.end - b.start;
@@ -27,8 +27,8 @@ pub fn scan_all(text: &str) -> Vec<Span> {
         )
     });
 
-    // Fjern spans som er heilt innanfor ein lengre, meir presis span.
-    // Ein span er "contained" om [start, end) ligg innanfor ein anna span.
+    // Remove spans that are entirely within a longer, more precise span.
+    // A span is "contained" if [start, end) lies within another span.
     let mut kept: Vec<Span> = Vec::new();
     for span in spans {
         let dominated = kept
@@ -54,15 +54,15 @@ mod tests {
         let spans = scan_all(text);
         assert!(
             spans.len() >= 3,
-            "Forventet minst 3 funn, fikk {}",
+            "Expected at least 3 matches, got {}",
             spans.len()
         );
 
-        // Sjekk at resultater er sortert etter posisjon
+        // Verify results are sorted by position
         for i in 1..spans.len() {
             assert!(
                 spans[i].start >= spans[i - 1].start,
-                "Funn er ikke sortert: {} kom for {}",
+                "Results are not sorted: {} came before {}",
                 spans[i].start,
                 spans[i - 1].start
             );
@@ -90,7 +90,7 @@ mod tests {
         assert!(types.contains(&&PIIType::Fodselsnummer));
         assert!(
             !types.contains(&&PIIType::PostalCode),
-            "Postnr skal ikkje dukke opp inne i eit fodselsnummer"
+            "Postal code should not appear inside a national identity number"
         );
     }
 
@@ -112,15 +112,15 @@ mod tests {
         let types: Vec<&PIIType> = spans.iter().map(|s| &s.pii_type).collect();
         assert!(
             types.contains(&&PIIType::Fodselsnummer),
-            "Mangler Fodselsnummer"
+            "Missing Fodselsnummer"
         );
-        assert!(types.contains(&&PIIType::Phone), "Mangler Phone");
-        assert!(types.contains(&&PIIType::OrgNumber), "Mangler OrgNumber");
+        assert!(types.contains(&&PIIType::Phone), "Missing Phone");
+        assert!(types.contains(&&PIIType::OrgNumber), "Missing OrgNumber");
         assert!(
             types.contains(&&PIIType::BankAccount),
-            "Mangler BankAccount"
+            "Missing BankAccount"
         );
-        assert!(types.contains(&&PIIType::Email), "Mangler Email");
-        assert!(types.contains(&&PIIType::PostalCode), "Mangler PostalCode");
+        assert!(types.contains(&&PIIType::Email), "Missing Email");
+        assert!(types.contains(&&PIIType::PostalCode), "Missing PostalCode");
     }
 }

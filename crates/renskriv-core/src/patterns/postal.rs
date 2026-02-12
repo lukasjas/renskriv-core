@@ -9,8 +9,8 @@ lazy_static! {
         r"(?i)\bNO[- ]?\d{4}\b|\b\d{4}\b"
     ).unwrap();
 
-    // Ord som tyder pa at 4-sifra talet er eit aarstal, ikkje eit postnummer.
-    // Sjekkar ordet rett for eller rett etter matchen.
+    // Words that suggest the 4-digit number is a year, not a postal code.
+    // Checks the word immediately before or after the match.
     static ref YEAR_CONTEXT_RE: Regex = Regex::new(
         r"(?i)(?:\b(?:januar|februar|mars|april|mai|juni|juli|august|september|oktober|november|desember|jan|feb|mar|apr|jun|jul|aug|sep|okt|nov|des|i|fra|til|siden|etter|innen|dato|år|year|regnskapsåret|skattemelding|f\.|født)\s*$|\(\s*f\.\s*$)"
     ).unwrap();
@@ -44,8 +44,8 @@ fn is_valid_range(d: &[u8; 4]) -> bool {
     num >= 1 && num <= 9991
 }
 
-// Sjekk at teiknet ved posisjon ikkje er eit siffer.
-// Returnerer true om posisjonen er utanfor teksten (start/slutt).
+// Check that the character at position is not a digit.
+// Returns true if the position is outside the text (start/end).
 fn char_at_is_not_digit(text: &str, byte_pos: usize) -> bool {
     if byte_pos >= text.len() {
         return true;
@@ -71,10 +71,10 @@ pub fn detect_postal(text: &str) -> Vec<Span> {
             continue;
         }
 
-        // Avvis om sifra grensar til fleire siffer i teksten.
-        // \b hindrar match inne i "01010101944", men ikkje ved
-        // "konto 1234.56" der "1234" har ordgrense pa begge sider.
-        // Sjekk teiknet rett for og rett etter matchen.
+        // Reject if the digits are adjacent to more digits in the text.
+        // \b prevents matching inside "01010101944", but not for
+        // "konto 1234.56" where "1234" has word boundaries on both sides.
+        // Check the character immediately before and after the match.
         if mat.start() > 0 && !char_at_is_not_digit(text, mat.start() - 1) {
             continue;
         }
@@ -82,8 +82,8 @@ pub fn detect_postal(text: &str) -> Vec<Span> {
             continue;
         }
 
-        // Avvis om talet er del av ein kode med bindestrek (serienummer, referansar).
-        // T.d. "XPS-9520-NRK" eller "HR-2019-0041" — ikkje postnummer.
+        // Reject if the number is part of a hyphenated code (serial numbers, references).
+        // E.g. "XPS-9520-NRK" or "HR-2019-0041" — not a postal code.
         if mat.start() > 0 && text.as_bytes()[mat.start() - 1] == b'-' {
             continue;
         }
@@ -91,8 +91,8 @@ pub fn detect_postal(text: &str) -> Vec<Span> {
             continue;
         }
 
-        // Sjekk om talet liknar eit aarstal (1900-2099) i aarstal-kontekst.
-        // Berre for bare 4-sifra match (ikkje NO-prefiks).
+        // Check if the number looks like a year (1900-2099) in year context.
+        // Only for bare 4-digit matches (not NO-prefixed).
         let has_prefix = candidate.len() > 4;
         if !has_prefix {
             let num = digits[0] as u16 * 1000
@@ -100,7 +100,7 @@ pub fn detect_postal(text: &str) -> Vec<Span> {
                 + digits[2] as u16 * 10
                 + digits[3] as u16;
             if (1900..=2099).contains(&num) {
-                // Sjekk kontekst: ord for eller etter som tyder pa aarstal
+                // Check context: words before or after that suggest a year
                 let before = &text[..mat.start()];
                 let after = &text[mat.end()..];
                 if YEAR_CONTEXT_RE.is_match(before) || YEAR_CONTEXT_AFTER_RE.is_match(after) {
@@ -177,21 +177,21 @@ mod tests {
 
     #[test]
     fn test_reject_part_of_longer_number() {
-        // 8 siffer utan separator — korkje "5678" eller "1234" skal matche
+        // 8 digits without separator — neither "5678" nor "1234" should match
         let results = detect_postal("ref 56781234");
         assert_eq!(results.len(), 0);
     }
 
     #[test]
     fn test_reject_start_of_longer_number() {
-        // 4 siffer direkte etterfylgt av fleire siffer
+        // 4 digits directly followed by more digits
         let results = detect_postal("id 12345");
         assert_eq!(results.len(), 0);
     }
 
     #[test]
     fn test_reject_end_of_longer_number() {
-        // Siffer rett for 4-sifra gruppa
+        // Digit immediately before the 4-digit group
         let results = detect_postal("kode 51234");
         assert_eq!(results.len(), 0);
     }
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn test_accept_year_range_as_postal_without_context() {
-        // 2009 er eit gyldig postnummer (Nordby) — skal matche utan aarskontekst
+        // 2009 is a valid postal code (Nordby) — should match without year context
         let results = detect_postal("adresse 2009 Nordby");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].value, "2009");
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn test_accept_postal_0155_not_year() {
-        // 0155 er utanfor aarstal-intervallet, skal alltid matche
+        // 0155 is outside the year range, should always match
         let results = detect_postal("Storgata 14, 0155 Oslo");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].value, "0155");

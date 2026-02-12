@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_valid_checksum() {
-        // A known valid test fødselsnummer
+        // A known valid test national identity number
         let digits = [0, 1, 0, 1, 0, 1, 0, 1, 9, 4, 4];
         assert!(validate_checksum(&digits));
     }

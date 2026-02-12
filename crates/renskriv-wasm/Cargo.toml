@@ -2,7 +2,7 @@
 name = "renskriv-wasm"
 version = "0.1.0"
 edition = "2021"
-description = "WASM-bindingar for renskriv-core PII-deteksjon"
+description = "WASM bindings for renskriv-core PII detection"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

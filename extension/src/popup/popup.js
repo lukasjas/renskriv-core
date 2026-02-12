@@ -1,16 +1,16 @@
-// popup.js — Handterer brukerinteraksjon i popup-vinduet
+// popup.js — Handles user interaction in the popup window
 
 const PII_LABELS = {
-  Fodselsnummer: "Fnr",
-  Dnummer: "D-nr",
-  Phone: "Telefon",
-  Email: "E-post",
-  PostalCode: "Postnr",
-  OrgNumber: "Orgnr",
-  BankAccount: "Bankkonto",
+  Fodselsnummer: "ID No.",
+  Dnummer: "D-No.",
+  Phone: "Phone",
+  Email: "Email",
+  PostalCode: "Postal",
+  OrgNumber: "Org No.",
+  BankAccount: "Bank Acct",
 };
 
-// Element-referanser
+// Element references
 const statusEl = document.getElementById("status");
 const inputEl = document.getElementById("input-text");
 const scanBtn = document.getElementById("scan-btn");
@@ -27,10 +27,10 @@ const copyBtn = document.getElementById("copy-btn");
 let currentSpans = [];
 let currentText = "";
 
-// Opne i eiga fane (fullskjerm)
+// Open in a separate tab (fullscreen)
 const expandBtn = document.getElementById("expand-btn");
 
-// Sjekk om vi allereie er i ei fane (ikkje popup)
+// Check if we are already in a tab (not a popup)
 if (window.location.search.includes("fullpage")) {
   document.body.classList.add("fullpage");
 }
@@ -38,10 +38,10 @@ if (window.location.search.includes("fullpage")) {
 expandBtn.addEventListener("click", () => {
   const url = browser.runtime.getURL("src/popup/popup.html?fullpage");
   browser.tabs.create({ url: url });
-  window.close(); // Lukk popup
+  window.close(); // Close popup
 });
 
-// Sjekk om WASM er klar
+// Check if WASM is ready
 async function checkStatus() {
   try {
     const response = await browser.runtime.sendMessage({ type: "GET_STATUS" });
@@ -50,25 +50,25 @@ async function checkStatus() {
       statusEl.classList.add("ready");
       scanBtn.disabled = false;
     } else {
-      statusEl.textContent = "Laster WASM...";
-      // Prov igjen om litt
+      statusEl.textContent = "Loading WASM...";
+      // Try again shortly
       setTimeout(checkStatus, 500);
     }
   } catch (err) {
-    statusEl.textContent = "Feil";
+    statusEl.textContent = "Error";
     statusEl.classList.add("error");
   }
 }
 
 checkStatus();
 
-// Skann-knapp
+// Scan button
 scanBtn.addEventListener("click", async () => {
   const text = inputEl.value.trim();
   if (!text) return;
 
   scanBtn.disabled = true;
-  scanBtn.textContent = "Skanner...";
+  scanBtn.textContent = "Scanning...";
   currentText = text;
 
   try {
@@ -78,7 +78,7 @@ scanBtn.addEventListener("click", async () => {
     });
 
     if (response.error) {
-      alert("Feil: " + response.error);
+      alert("Error: " + response.error);
       return;
     }
 
@@ -86,7 +86,7 @@ scanBtn.addEventListener("click", async () => {
 
     if (currentSpans.length === 0) {
       resultsEl.classList.remove("hidden");
-      highlightedEl.textContent = "Ingen personopplysninger funnet.";
+      highlightedEl.textContent = "No personal data found.";
       spanListEl.innerHTML = "";
       redactBtn.classList.add("hidden");
       selectAllBtn.classList.add("hidden");
@@ -97,10 +97,10 @@ scanBtn.addEventListener("click", async () => {
 
     renderResults();
   } catch (err) {
-    alert("Feil ved skanning: " + err.message);
+    alert("Scan error: " + err.message);
   } finally {
     scanBtn.disabled = false;
-    scanBtn.textContent = "Skann";
+    scanBtn.textContent = "Scan";
   }
 });
 
@@ -111,10 +111,10 @@ function renderResults() {
   selectAllBtn.classList.remove("hidden");
   clearAllBtn.classList.remove("hidden");
 
-  // Bygg uthevet tekst
+  // Build highlighted text
   renderHighlightedText();
 
-  // Bygg liste over funn
+  // Build list of matches
   spanListEl.innerHTML = "";
   currentSpans.forEach((span, i) => {
     const item = document.createElement("div");
@@ -147,21 +147,21 @@ function renderResults() {
 }
 
 function renderHighlightedText() {
-  // Finn hvilke spans som er avkrysset
+  // Find which spans are checked
   const checked = currentSpans.filter((_, i) => {
     const cb = document.getElementById("span-" + i);
     return cb && cb.checked;
   });
 
-  // Sorter etter posisjon
+  // Sort by position
   const sorted = [...checked].sort((a, b) => a.start - b.start);
 
-  // Bygg HTML med uthevinger
+  // Build HTML with highlights
   highlightedEl.innerHTML = "";
   let pos = 0;
 
   for (const span of sorted) {
-    // Tekst for span
+    // Text before span
     if (span.start > pos) {
       highlightedEl.appendChild(
         document.createTextNode(currentText.substring(pos, span.start)),
@@ -177,7 +177,7 @@ function renderHighlightedText() {
     pos = span.end;
   }
 
-  // Resten av teksten
+  // Rest of the text
   if (pos < currentText.length) {
     highlightedEl.appendChild(
       document.createTextNode(currentText.substring(pos)),
@@ -185,7 +185,7 @@ function renderHighlightedText() {
   }
 }
 
-// Velg alle / Fjern alle
+// Select all / Clear all
 selectAllBtn.addEventListener("click", () => {
   currentSpans.forEach((_, i) => {
     const cb = document.getElementById("span-" + i);
@@ -202,7 +202,7 @@ clearAllBtn.addEventListener("click", () => {
   renderHighlightedText();
 });
 
-// Sladd-knapp
+// Redact button
 redactBtn.addEventListener("click", async () => {
   const approvedSpans = currentSpans.filter((_, i) => {
     const cb = document.getElementById("span-" + i);
@@ -210,7 +210,7 @@ redactBtn.addEventListener("click", async () => {
   });
 
   if (approvedSpans.length === 0) {
-    alert("Ingen funn er valgt for sladding.");
+    alert("No matches selected for redaction.");
     return;
   }
 
@@ -224,12 +224,12 @@ redactBtn.addEventListener("click", async () => {
   redactedTextEl.textContent = response.redactedText;
 });
 
-// Kopier-knapp
+// Copy button
 copyBtn.addEventListener("click", async () => {
   const text = redactedTextEl.textContent;
   await navigator.clipboard.writeText(text);
-  copyBtn.textContent = "Kopiert!";
+  copyBtn.textContent = "Copied!";
   setTimeout(() => {
-    copyBtn.textContent = "Kopier";
+    copyBtn.textContent = "Copy";
   }, 1500);
 });
