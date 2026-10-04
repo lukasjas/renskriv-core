@@ -149,7 +149,7 @@ pub(crate) fn validate_date(d: &[u8; 11]) -> bool {
     let day = if dd > 40 { dd - 40 } else { dd };
 
     // Month must be 1..=12
-    if mm < 1 || mm > 12 {
+    if !(1..=12).contains(&mm) {
         return false;
     }
 

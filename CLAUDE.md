@@ -6,68 +6,43 @@ Renskriv is a Norwegian PII (personally identifiable information) detection and 
 
 The core thesis: privacy and data sovereignty are the differentiator. All processing runs locally — no data leaves the user's machine.
 
-## Architecture Overview
+## Current State
 
-Renskriv uses a **four-layer detection pipeline** implemented in Rust:
+Only the pattern layer is implemented. Names, addresses and dates are **not** detected yet — do not describe the tool as if they were.
 
-1. **Layer 1 — Pattern Matching** (`patterns/`): Deterministic regex + MOD-11 checksum validation for structured Norwegian identifiers (fødselsnummer, D-nummer, organisasjonsnummer, bankkontonummer, phone, email, postal codes).
-2. **Layer 2 — NER** (`ner/`): Named entity recognition via a trait-based interface. SpaCy's `nb_core_news_lg` for native targets (via PyO3), Candle/Tract for WASM targets. Detects PER, LOC, ORG, GPE.
-3. **Layer 3 — Gazetteer** (`gazetteer/`): Lookup against Norwegian address data from Kartverket (street names, municipalities, counties) via hashmap/trie.
-4. **Layer 4 — Context Rules** (`context/`): Rule engine examining surrounding text — legal keywords ("klient", "saksøker", "tiltalte") boost confidence, case numbers are excluded from PII, adjacent spans are merged.
+- `crates/renskriv-core` — pattern detectors (`patterns/`), data types (`model.rs`), `scan_all` in `lib.rs` (runs all detectors, drops spans contained in a longer one, sorts by position), and the `renskriv-scan` CLI (`src/bin/scan.rs`).
+- `crates/renskriv-wasm` — wasm-bindgen wrapper exposing `scan_text` and `version`. Converts byte offsets to char offsets for JavaScript.
+- `extension/` — Firefox Manifest V2 extension. `background.js` loads the WASM and handles scan/redact messages; `content.js` intercepts paste and Enter on AI sites and renders the review panel in a Shadow DOM.
+- `extension/src/wasm/` is build output (`make wasm`), not checked in.
 
-Results from all layers feed into a **merger** (`merger.rs`) that sorts by position, resolves overlaps (pattern > NER for identical spans, NER kept if broader), deduplicates, and assigns consistent placeholder IDs (`[PERSON_1]`, `[FODSELSNUMMER]`, etc.).
+### Data Models (`model.rs`)
 
-The **pipeline** (`pipeline.rs`) orchestrates the full flow: text in → L1→L2→L3→L4→Merger → `RedactionResult` out.
+- `PIIType` — Enum: Fodselsnummer, Dnummer, Phone, OrgNumber, BankAccount, Email, PostalCode
+- `DetectionSource` — Enum: Pattern, SpacyNER, Gazetteer, ContextRule, Manual (only Pattern is produced today)
+- `Span` — Struct: pii_type, source, value, start, end, confidence
 
-### Key Architectural Principle
+## Commands
 
-The NER layer is a **trait** — the core defines "I need something that takes text and returns spans." Each compilation target provides its own implementation. Regex, gazetteer, context rules, and merger are pure Rust with no platform dependencies — roughly 70–80% of the codebase, written once.
+```bash
+cargo test
+cargo fmt --all --check
+cargo clippy --all-targets -- -D warnings
+make wasm      # build WASM into extension/src/wasm/ (needs wasm-pack)
+make scan      # run the CLI on a sample string
+```
 
-## Core Data Models (`models.rs`)
+## Planned Architecture (not built)
 
-- `PIIType` — Enum: Fodselsnummer, Dnummer, Phone, Email, PostalCode, OrgNumber, BankAccount, Person, Location, Organisation
-- `DetectionSource` — Enum: Pattern, NER, Gazetteer, Context, Manual
-- `Span` — Struct: pii_type, value, start, end, confidence, source
-- `RedactionResult` — Struct: original, redacted, spans, metadata
+The target is a **four-layer detection pipeline**:
 
-## Compilation Targets
+1. **Layer 1 — Pattern Matching** (`patterns/`) — *implemented*. Regex + MOD-11 checksum validation for structured Norwegian identifiers.
+2. **Layer 2 — NER** — *planned*. Named entity recognition behind a trait, so each compilation target supplies its own backend (SpaCy `nb_core_news_lg` via PyO3 natively, Candle/Tract for WASM). Detects PER, LOC, ORG, GPE.
+3. **Layer 3 — Gazetteer** — *planned*. Lookup against Kartverket address data (street names, municipalities, counties).
+4. **Layer 4 — Context Rules** — *planned*. Legal keywords ("klient", "saksøker", "tiltalte") boost confidence, case numbers are excluded, adjacent spans are merged.
 
-One Rust core library, four distribution surfaces:
+A merger would then resolve overlaps across layers (pattern > NER for identical spans, NER kept if broader) and assign consistent placeholder IDs (`[PERSON_1]`, `[FODSELSNUMMER]`), with a pipeline module orchestrating L1→L2→L3→L4→merger.
 
-| Target | Compile | NER Backend | Tech |
-|---|---|---|---|
-| Browser extension | wasm32 | Candle/Tract | wasm-bindgen |
-| Desktop app | native | SpaCy | Tauri + PyO3 |
-| Web application | native/wasm | SpaCy/Candle | API / Streamlit |
-| CLI | native | SpaCy | `renskriv scan` |
-
-## Tech Stack
-
-- **Language**: Rust (core), Python (NLP integration, prototyping)
-- **Rust crates**: `regex`, `lazy_static`, `serde`, `thiserror`
-- **Python/NLP**: SpaCy `nb_core_news_lg` for Norwegian NER, integrated via PyO3
-- **External data**: Kartverket (Norwegian address validation), MOD-11 algorithms
-- **Build**: `cargo` for build/test/clippy, WASM via `wasm-pack`
-- **Reference architectures**: redacter-rs, rust-bert, nlprule, Tauri
-
-## Build Order
-
-Implement sequentially. Each step has its own tests — don't proceed until tests pass.
-
-1. `models.rs` — Core data types
-2. `fnr.rs` — Fødselsnummer + D-nummer (11 digits, MOD-11, date validation)
-3. `phone.rs` — Phone numbers (8 digits, +47, mobile 4/9 prefix)
-4. `email.rs` — Email addresses (RFC 5322, .no domains)
-5. `postal.rs` — Postal codes (4 digits, 0001–9999, context-aware)
-6. `orgnr.rs` — Organisasjonsnummer (9 digits, starts with 8/9, MOD-11)
-7. `bank.rs` — Bank account numbers (11 digits, MOD-11 on last digit)
-8. `patterns/mod.rs` — Pattern layer complete
-9. `ner/mod.rs` — NER trait + stub implementation
-10. `merger.rs` — Span merging, dedup, overlap resolution
-11. `pipeline.rs` — Full pipeline orchestration
-12. `lib.rs` — Public API
-
-**Phases**: Steps 1–8 first (models + all pattern detectors), then 9–12 (NER stub + merger + pipeline + API), then gazetteer → context rules → real NER → CLI → WASM → PyO3.
+Planned distribution surfaces beyond the browser extension: desktop app (Tauri + PyO3), web application, fuller CLI.
 
 ## Norwegian PII Specifics
 
@@ -77,13 +52,13 @@ These details matter for correct implementation:
 - **D-nummer**: Same format as fødselsnummer but first digit +4 (so day 01 becomes 41). Subtract 4 from first digit before date validation. Same MOD-11 check.
 - **Organisasjonsnummer**: 9 digits starting with 8 or 9. MOD-11 weights: [3, 2, 7, 6, 5, 4, 3, 2].
 - **Pattern matching alone catches ~60% of PII.** The other 40% (names, addresses in prose, org names) requires NER. Both layers are essential.
-- **Accuracy targets**: >95% precision and >99% recall for patterns, >85% precision and >80% recall for NER. Overall F1 >90%.
+- **Accuracy targets** (goals, not measured): >95% precision and >99% recall for patterns, >85% precision and >80% recall for NER. Overall F1 >90%.
 
 ## Testing Conventions
 
 - Every pattern detector needs dedicated tests: valid matches, invalid matches, edge cases, false positive prevention.
 - **Never use real personal data in tests.** Generate synthetic but realistic Norwegian data with valid checksums and clearly fictional dates.
-- Integration tests use sample Norwegian documents: legal filings, employment contracts, municipal correspondence.
+- Tests live next to the code in `#[cfg(test)]` modules.
 - Run `cargo test` and `cargo clippy` before advancing to the next build step.
 
 ## Design Principles

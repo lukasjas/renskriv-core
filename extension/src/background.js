@@ -22,9 +22,21 @@ async function initWasm() {
 
 initWasm();
 
-// Click on extension icon => toggle the panel in the active tab
+// Click on extension icon => toggle the panel in the active tab.
+// The content script is only preloaded on AI sites (see manifest.json).
+// Elsewhere we inject it on demand — the click grants activeTab for this tab.
 browser.browserAction.onClicked.addListener(async (tab) => {
-  browser.tabs.sendMessage(tab.id, { type: "TOGGLE_PANEL" });
+  try {
+    await browser.tabs.sendMessage(tab.id, { type: "TOGGLE_PANEL" });
+  } catch {
+    try {
+      await browser.tabs.executeScript(tab.id, { file: "/src/content.js" });
+      await browser.tabs.sendMessage(tab.id, { type: "TOGGLE_PANEL" });
+    } catch (err) {
+      // Privileged pages (about:, addons.mozilla.org) can't be scripted
+      console.error("Could not open panel on this page:", err);
+    }
+  }
 });
 
 // Listen for messages from content script

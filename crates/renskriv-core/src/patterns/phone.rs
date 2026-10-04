@@ -14,8 +14,8 @@ lazy_static! {
 fn strip_formatting(s: &str) -> Option<String> {
     // Remove +47 or 0047 prefix
     let s = s.trim_start_matches('+');
-    let s = if s.starts_with("0047") {
-        &s[4..]
+    let s = if let Some(rest) = s.strip_prefix("0047") {
+        rest
     } else if s.starts_with("47") && s.len() > 8 {
         &s[2..]
     } else {

@@ -1,1 +1,5 @@
 /target
+.DS_Store
+
+# Built by scripts/build-wasm.sh
+/extension/src/wasm/
