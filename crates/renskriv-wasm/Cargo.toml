@@ -3,6 +3,7 @@ name = "renskriv-wasm"
 version = "0.1.0"
 edition = "2021"
 description = "WASM bindings for renskriv-core PII detection"
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

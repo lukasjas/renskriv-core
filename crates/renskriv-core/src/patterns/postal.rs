@@ -41,7 +41,7 @@ fn parse_digits(s: &str) -> Option<[u8; 4]> {
 // 0000 is not a valid postal code.
 fn is_valid_range(d: &[u8; 4]) -> bool {
     let num = d[0] as u16 * 1000 + d[1] as u16 * 100 + d[2] as u16 * 10 + d[3] as u16;
-    num >= 1 && num <= 9991
+    (1..=9991).contains(&num)
 }
 
 // Check that the character at position is not a digit.
